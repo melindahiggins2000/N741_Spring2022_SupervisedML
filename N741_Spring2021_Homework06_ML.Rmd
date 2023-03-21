@@ -1,0 +1,812 @@
+---
+title: "NRSG 741 - Homework 6 - Machine Learning (ML) Methods"
+author: "Melinda Higgins"
+date: "04/14/2021"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+## NOTES
+
+* Use this Rmarkdown file to complete this homework
+* Remember to change the title and author in the YAML header above to your preferences.
+* Make your edits below the **=====** section indicated below.
+
+## INSTRUCTIONS
+
+Do ONE unsupervised machine learning approach AND ONE supervised machine learning approach. 
+
+Show your code and provide explanations on how well your models did finding clusters or patterns related to either the 3 sexes OR the number of rings related to the age of the abalones - based on the 4 weight measurements in the dataset (`wholeWeight`, `shuckedWeight`, `visceraWeight`, `shellWeight`).
+
+I have provided some examples and code below to help you for similar analyses using the 3 dimensional measurements (`length`, `height` and `diameter`) for the 3 sexes and number of rings.
+
+**Unsupervised Learning:**
+
+Use the bottom half of Dr. Hertzberg's ML part 2 lecture [https://vhertzb.github.io/ML2021/ML_part2_2021.html](https://vhertzb.github.io/ML2021/ML_part2_2021.html) as a guide along with the example code provided below.
+
+1. Choose ONE unsupervised learning method (possible methods listed below), to explore the associations among the 4 weight measurements (`wholeWeight`, `shuckedWeight`, `visceraWeight`, `shellWeight`) and see what (if any) insights you can gain about these weight associations and other sample characteristics like `sex` or `rings`. 
+
+    a. **cluster analysis**
+        - try either `hclust()` - from the builtin `stats` package with base R - and explore various linkages (e.g. complete (default), single, average, etc);
+        - OR `kmeans()` - also from `stats` package loaded with base R
+        - and explore how many clusters you think there are
+        - see if you think these clusters relate at all to the 3 sexes or possibly to the number of rings (i.e., ages of the abalones)
+        
+    b. OR **principal components analysis (PCA)**
+        - use `prcomp()` to explore the number of principle components you think exist in this dataset - based on the 4 weight measurements
+        - make a scree plot and explain the number of components you choose
+        - make a principal component (PC) score plot to see how the 4177 abalones map in your PC plot - color the points by the 3 sexes or by the number of rings and see if you spot a pattern.
+        
+    c. OR **multidimensional scaling (MDS)**
+        - use the `dist()` and `cmdscale()` functions from the `stats` package in base R
+        - make a plot of the 4177 abalones in the "Principal Coordinate Analysis or PCoA" plot you extracted from the `cmdscale()` output
+        - color the points by sex or by number of rings and see if you spot any patterns or clusters
+        - OR optionally use the `isoMDS()` function from the `MASS` package to perform the (nonparametric) MDS analysis
+        - and use those results to make a PCoA plot and color the points to see if you spot any patterns or clusters that align with either sex or number of rings
+
+**Supervised Learning:**
+
+Use the top half of Dr. Hertzberg's ML part 2 lecture [https://vhertzb.github.io/ML2021/ML_part2_2021.html](https://vhertzb.github.io/ML2021/ML_part2_2021.html) and ML part 1 [https://vhertzb.github.io/ML2021/ML_part1_2021.html](https://vhertzb.github.io/ML2021/ML_part1_2021.html) as a guide along with the example code provided below.
+
+2. Choose ONE supervised learning method (possible methods listed below), to explore the associations among the 4 weight measurements (`wholeWeight`, `shuckedWeight`, `visceraWeight`, `shellWeight`) and evaluate how well the associations among the 4 weight measurements help predict either `sex` or number of `rings`. Provide information on how well or poorly your supervised method did for predicting the number of rings or the 3 sexes of abalones.
+
+    a. If predicting `sex` you can use "classification" related supervised learning methods - choose ONE:
+        - Perform a **CART** (classification and regression tree) classification tree using 
+            - the `rpart()` procedure from the `rpart` package for the 3 sexes.
+            - OR try using the `ctree()` method from the `party` package to do the classification tree for the 3 sexes
+        - OR try doing a **random forest** using `rfsrc()` from the `randomForestSRC` package
+
+        
+    b. OR If predicting the number of `rings` you can use "regression" related supervised learning methods:
+        - Perform a **CART** regression tree using 
+            - the `rpart()` procedure from the `rpart` package for the number of rings.
+            - OR try using the `ctree()` method from the `party` package to do the regression tree for the number of rings
+        - OR try doing a **random forest** using `rfsrc()` from the `randomForestSRC` package
+
+```{r setup, include=FALSE}
+# set up chunk output options
+# set to FALSE to clean up final output
+# leave TRUE to help with debugging initially
+knitr::opts_chunk$set(echo = TRUE)
+
+# suppress the printing of warnings, errors and
+# messages in the knitted output report
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(error = FALSE)
+
+# Get data
+# learn more at https://archive.ics.uci.edu/ml/datasets/abalone
+
+# Load the abalone dataset using read_csv() function
+# from readr package
+library(readr)
+abalone <- 
+  readr::read_csv(
+    file = "https://archive.ics.uci.edu/ml/machine-learning-databases/abalone/abalone.data", col_names = FALSE)
+
+# put in the variables names
+# see details at https://archive.ics.uci.edu/ml/machine-learning-databases/abalone/abalone.names
+names(abalone) <- c("sex","length",
+                    "diameter","height",
+                    "wholeWeight","shuckedWeight",
+                    "visceraWeight","shellWeight","rings")
+
+# Load packages
+library(dplyr)   # for coding using %>%
+library(ggplot2) # for plotting
+library(knitr)   # for using kable()
+library(printr)  # improves tables in output
+library(arsenal) # making detailed tables
+library(car)     # for regression diagnostics
+# for comparing models - only for HTML or PDF output
+library(stargazer) 
+
+## remove 2 outliers with height > 0.3 which is really unusual
+abalone <- abalone %>%
+  filter(height < 0.3)
+```
+
+## Abalones Dataset from UCI Repository
+
+For this homework, you will keep working with the `abalone` dataset from the UCI data repository at [https://archive.ics.uci.edu/ml/datasets/abalone](https://archive.ics.uci.edu/ml/datasets/abalone).
+
+These data on abalones come from from an original (non-machine-learning) study:
+
+* Warwick J Nash, Tracy L Sellers, Simon R Talbot, Andrew J Cawthorn and Wes B Ford (1994); "The Population Biology of Abalone (_Haliotis_ species) in Tasmania. I. Blacklip Abalone (_H. rubra_) from the North Coast and Islands of Bass Strait", Sea Fisheries Division, Technical Report No. 48 (ISSN 1034-3288)
+
+One of the goals of this study was to be able to predicting the age of abalone from physical measurements. The age of abalone is determined by cutting the shell through the cone, staining it, and counting the number of rings through a microscope -- a boring and time-consuming task. Other measurements, which are easier to obtain, might be used to predict the age.
+
+This dataset (once loaded here) has 9 measurements on 4177 abalones:
+
+1. `sex` - there are 2 sexes:
+    - "I" for infant or immature abalones
+    - "M" for males
+    - "F" for females
+2. `length` - longest shell measurement (in mm)
+3. `diameter` - perpendicular to length (in mm)
+4. `height` - with meat in shell (in mm)
+5. `wholeWeight` - whole abalone weight (in grams)
+6. `shuckedWeight` - weight of meat (in grams)
+7. `visceraWeight` - gut weight, after bleeding (in grams)
+8. `shellWeight` - after being dried (in grams)
+9. `rings` - number of shell rings; rings + 1.5 gives the age of the abalone in years
+
+## Summary Statistics of Abalone Measurements
+
+### Summary statistics with the `arsenal::tableby()` function
+
+**NOTE**: Remember this code chunk needs `results="asis"` for the `arsenal::tableby()` output to format correctly when knitted.
+
+```{r results="asis"}
+# make table with tableby from arsenal package
+tab1 <- tableby(~ sex + length + diameter + height +
+                  wholeWeight + shuckedWeight + 
+                  visceraWeight + shellWeight + rings,
+                data = abalone)
+summary(tab1)
+```
+
+---
+
+## Explore the correlations
+
+Since all of these methods are more or less in some way related to the underlying correlations between the measurements you will be exploring, it can be good to take a look at the correlation matrix (or visualize using a scatterplot matrix for a smaller number of variables). We can also add color to explore any potential groupings or other characteristics of interest. For example, here we can color the points by the 3 sexes or the number of rings.
+
+## Select the data you want to focus on
+
+The code I have below uses the 3 dimensional measurements of `length`, `diameter` and `height.` For your homework change these to the 4 weight measurements of `wholeWeight`, `shuckedWeight`, `visceraWeight` and `shellWeight.`
+
+```{r}
+datsex <- abalone %>%
+  select(sex, length, diameter, height)
+  
+datrings <- abalone %>%
+  select(rings, length, diameter, height)
+```
+
+### Make a scatterplot matrix
+
+**NOTE**: This code uses the `PairPlot()` function from the `WVPlots` package which allows for adding colors and a legend to a scatterplot matrix plot.
+
+```{r}
+library(WVPlots) 
+
+PairPlot(datsex, 
+         colnames(datsex)[2:4], 
+         title="Abalone Data -- 3 sexes", 
+         group_var = "sex")
+```
+
+Distribution of number of rings
+
+```{r}
+hist(datrings$rings)
+```
+
+**NOTE**: For easier visualization of the number of rings which ranges from 1 to 29, let's look at breaking this into the 4 quartiles:
+
+* 1-7 lowest 1st quartile
+* 8-9 2nd quartile
+* 10-11 3rd quartile
+* 12 and higher 4th highest quartile
+
+Summary stats: 
+
+```{r}
+summary(datrings$rings)
+```
+
+Break into quartiles:
+
+```{r}
+datrings <- datrings %>%
+  mutate(
+    rings4cat = case_when(
+      rings < 8 ~  "Q1: rings 1-7",
+      ((rings > 7) & (rings < 10)) ~ "Q2: rings 8-9",
+      ((rings > 9) & (rings < 12)) ~ "Q3: rings 10-11",
+      rings > 11 ~ "Q4: rings 12+"
+    )
+  )
+```
+
+```{r}
+PairPlot(datrings, 
+         colnames(datrings)[2:4], 
+         title="Abalone Data -- by number of rings by quartile", 
+         group_var = "rings4cat")
+```
+
+---
+
+**===== HOMEWORK - MAKE YOUR EDITS AS NEEDED IN THE CODE CHUNKS BELOW =====**
+
+## Unsupervised Machine Learning Options
+
+### Cluster Analysis - compare to 3 Sexes
+
+Put the 3 dimension measurements into a dataset. Scale that data. And then compute the Euclidian distances to be used in the clustering methods.
+
+```{r}
+datsex.data <- datsex %>%
+  select(length, diameter, height)
+
+# Scale the data before clustering
+sd.data <- scale(datsex.data)
+
+# Calculate Euclidean distance between each pair of points
+data.dist <- dist(sd.data)
+```
+
+Make a plot of the hierarchical cluster analysis of these computed Euclidean distances. The code below uses the default option of the "complete linkage" method.
+
+```{r}
+# Plot the tree, default linkage is 'complete'
+plot(hclust(data.dist, method="complete"), 
+     labels = datsex$sex, 
+     main = "Complete Linkage", xlab = "",
+     sub = "", ylab = "")
+```
+
+If we use a cutoff for 3 clusters, how well do these 3 clusters identified using the complete linkage match up with the 3 sexes?
+
+```{r}
+# Let's use complete linkage and cut into 3 clusters
+hc.out <- hclust(dist(sd.data), method="complete")
+hc.clusters <- cutree(hc.out, 3)
+
+# compare these 3 extracted clusters to the 3 sexes
+table(hc.clusters, datsex$sex)
+```
+
+These 3 clusters do NOT appear to be closely related to these 3 sexes. Cluster 1 is mostly "I" infants; cluster 2 is a mixture of mostly "F" females and "M" males; and cluster 3 is again mostly "I" infants.
+
+---
+
+The code below uses the option of the "average linkage" method.
+
+```{r}
+# Plot the tree, linkage is 'average'
+plot(hclust(data.dist, method = "average"), 
+     labels = datsex$sex, 
+     main = "Average Linkage", xlab = "", 
+     sub = "", ylab = "")
+```
+
+```{r}
+# Let's use complete linkage and cut into 3 clusters
+hc.out <- hclust(dist(sd.data), method="average")
+hc.clusters <- cutree(hc.out, 3)
+
+# compare these 3 extracted clusters to the 3 sexes
+table(hc.clusters, datsex$sex)
+```
+
+This approach does not break into 3 clusters very well. Nearly all of the cases are lumped into the 1st cluster which doesn't help much.
+
+```{r}
+# K-means clustering with K=3 
+# (from the hierarchical clustering number)
+
+set.seed(40523)
+km.out = kmeans(sd.data, 3, nstart = 20)
+km.clusters = km.out$cluster
+table(km.clusters, datsex$sex)
+```
+
+The k-means clustering approach appears to provide better breakdown of the data into 3 clusters which somewhat are related to the 3 sexes but there is quite a bit of overlap. Cluster 1 is a mixture of "F" females and "M" males; cluster 2 is evenly split across the 3 sexes and cluster 3 is mostly "I" infants.
+
+
+### Cluster Analysis - compare to Number of Rings (by quartile)
+
+Put the 3 dimension measurements into a dataset. Scale that data. And then compute the Euclidian distances to be used in the clustering methods.
+
+```{r}
+datrings.data <- datrings %>%
+  select(length, diameter, height)
+
+# Scale the data before clustering
+sd.data <- scale(datrings.data)
+
+# Calculate Euclidean distance between each pair of points
+data.dist <- dist(sd.data)
+```
+
+Make a plot of the hierarchical cluster analysis of these computed Euclidean distances. The code below uses the default option of the "complete linkage" method.
+
+But NOW we are going to look for 4 clusters and see if they relate somehow to the 4 quartiles of number of rings related to the ages of the abalones.
+
+```{r}
+# Plot the tree, default linkage is 'complete'
+plot(hclust(data.dist, method="complete"), 
+     labels = datrings$rings4cat, 
+     main = "Complete Linkage", xlab = "",
+     sub = "", ylab = "")
+```
+
+If we use a cutoff for 4 clusters, how well do these 4 clusters identified using the complete linkage match up with the 4 rings quartiles?
+
+```{r}
+# Let's use complete linkage and cut into 4 clusters
+hc.out <- hclust(dist(sd.data), method="complete")
+hc.clusters <- cutree(hc.out, 4)
+
+# compare these 4 extracted clusters to the 4 rings quartiles
+table(hc.clusters, datrings$rings4cat)
+```
+
+These 4 clusters are not too bad some do line up with the ring quartiles but not perfectly. Cluster 1 is mostly a mixture of Q1 and Q2 (the 1st two quartiles); cluster 2 is mostly a mixture of Q2 and Q3; and cluster 3 is a mixture of mostly Q3 and Q4; and cluster 4 is mostly the younger abalones in Q1.
+
+---
+
+The code below uses the option of the "average linkage" method.
+
+```{r}
+# Plot the tree, linkage is 'average'
+plot(hclust(data.dist, method = "average"), 
+     labels = datrings$rings4cat, 
+     main = "Average Linkage", xlab = "", 
+     sub = "", ylab = "")
+```
+
+```{r}
+# Let's use complete linkage and cut into 4 clusters
+hc.out <- hclust(dist(sd.data), method="average")
+hc.clusters <- cutree(hc.out, 4)
+
+# compare these 4 extracted clusters to the 4 rings quartiles
+table(hc.clusters, datrings$rings4cat)
+```
+
+Again, this approach does not break into 4 clusters very well. Nearly all of the cases are lumped into the 1st cluster which doesn't help much.
+
+```{r}
+# K-means clustering with K=4 
+# (from the hierarchical clustering number)
+
+set.seed(40523)
+km.out = kmeans(sd.data, 4, nstart = 20)
+km.clusters = km.out$cluster
+table(km.clusters, datrings$rings4cat)
+```
+
+The k-means clustering approach appears to break into 4 clusters ok but these do not align very well with the 4 rings quartiles.
+
+### Principal Components Analysis (PCA) - compare to 3 Sexes
+
+```{r}
+# pull out only the 3 dimension measurements
+datsex.data <- datsex %>%
+  select(length, diameter, height)
+
+# Find the principal components of the normalized data
+pr.out <- prcomp(datsex.data, 
+                 scale = TRUE)
+```
+
+One type of SCREE Plot
+
+```{r}
+plot(pr.out)
+```
+
+You can also compute and plot the percent variance explained as another kind of SCREE plot
+
+```{r}
+pve <- 100*pr.out$sdev^2/sum(pr.out$sdev^2)
+plot(pve, type="b")
+```
+
+List the percent variances explained by each sequential principal component
+
+```{r}
+pve
+```
+
+This is an overly simplistic PCA since we are only putting in 3 variables - the 3 dimensional measurements of length, diameter and height - so we will have at most 3 principal components (3 PCs).
+
+But as you can see, the 1st PC explains over 95% of the variance which indicates that these 3 dimensional measurements are highly correlated to each other probably representing one overall "size" component in the 1st PC.
+
+But let's make a couple of scatterplot to look at what the points look like laid out into the principal components space and then color the points by sex.
+
+We'll use the `PairPlot()` again from the `WVPlots` package.
+
+```{r}
+# merge pr.out$x which is the scores on the
+# 3 principal components
+# with the sex variable added as 1st column to df
+df <- data.frame(datsex$sex,pr.out$x)
+# rename 1st column to sex
+names(df)[1] <- "sex"
+
+PairPlot(df,                # sex + 3 PC score data
+         colnames(df)[2:4], # plot last 3 columns
+         title="PC Plot",   # add a title
+         group_var = "sex") # color points by sex
+```
+
+While the clusters are not perfectly separated, we can see some clustering of the points by the 3 different sexes with the infants/immature abalones clustered near the left or bottom of the plots and the males more towards the top or right side.
+
+### Principal Components Analysis (PCA) - compare to Number of Rings (by 4 quartiles)
+
+**NOTE**: We get the same PC results here for the same 3 dimensions measurements (length, diameter and height). We're basically just visualizing the 4 rings quartiles here instead of the 3 sexes.
+
+```{r}
+# pull out only the 3 dimension measurements
+datrings.data <- datrings %>%
+  select(length, diameter, height)
+
+# Find the principal components of the normalized data
+pr.out <- prcomp(datrings.data, 
+                 scale = TRUE)
+```
+
+One type of SCREE Plot
+
+```{r}
+plot(pr.out)
+```
+
+You can also compute and plot the percent variance explained as another kind of SCREE plot
+
+```{r}
+pve <- 100*pr.out$sdev^2/sum(pr.out$sdev^2)
+plot(pve, type="b")
+```
+
+List the percent variances explained by each sequential principal component.
+
+```{r}
+pve
+```
+
+This is an overly simplistic PCA since we are only putting in 3 variables - the 3 dimensional measurements of length, diameter and height - so we will have at most 3 principal components (3 PCs).
+
+But as you can see, the 1st PC explains over 95% of the variance which indicates that these 3 dimensional measurements are highly correlated to each other probably representing one overall "size" component in the 1st PC.
+
+But let's make a couple of scatterplot to look at what the points look like laid out into the principal components space and then color the points by the 4 rings quartiles.
+
+We'll use the `PairPlot()` again from the `WVPlots` package.
+
+```{r}
+# merge pr.out$x which is the scores on the
+# 3 principal components
+# with the rings4cat variable added as 1st column to df
+df <- data.frame(datrings$rings4cat,pr.out$x)
+
+# rename 1st column to rings4cat
+names(df)[1] <- "rings4cat"
+
+PairPlot(df,                # rings4cat + 3 PC score data
+         colnames(df)[2:4], # plot last 3 columns
+         title="PC Plot",   # add a title
+         group_var = "rings4cat") # color points by rings4cat
+```
+
+While the clusters are not perfectly separated, we can see some clustering of the points by the 4 sequential rings quartiles with the youngest abalones (rings4cat 1st quartile) clustered near the left or bottom of the plots and the oldest (4th quartile) more towards the top or right side.
+
+### Multidimensional Scaling (MDS) - compare to 3 Sexes
+
+For this example, we'll just keep and look at the 1st 2 PCoA ("principal coordinates").
+
+**NOTE** This may take a few minutes to run (it took 2-3 minutes on my computer). I also set `eig=FALSE` to speed up the process - we do NOT need the eigenvalues saved for now.
+
+```{r}
+# pull out only the 3 dimension measurements
+datsex.data <- datsex %>%
+  select(length, diameter, height)
+
+d <- dist(datsex.data)
+
+fit <- cmdscale(d, eig=FALSE, k=2)
+```
+
+```{r}
+# merge fit which is the scores on the
+# first 2 principal coordinates from fit
+# with the sex variable added as 1st column to df
+df <- data.frame(datsex$sex, fit)
+
+# rename 1st column to sex
+names(df)[1] <- "sex"
+
+PairPlot(df,                # sex + 2 PCoA score data
+         colnames(df)[2:3], # plot last 2 columns
+         title="PCoA Plot",   # add a title
+         group_var = "sex") # color points by sex
+```
+
+This plot looks very similar to the PCA plot above with the infants/immature abalones clustering to the left or bottom of the plot and the males clustering more to the top or right side of the plot.
+
+### Multidimensional Scaling (MDS) - compare to Number of Rings (by quartile)
+
+The MDS is already run from above all we need to do is remake the plot but color the points by the 4 quartile for the number of rings.
+
+```{r}
+# merge fit which is the scores on the
+# first 2 principal coordinates PCoA from fit
+# with the rings4cat variable added as 1st column to df
+df <- data.frame(datrings$rings4cat, fit)
+
+# rename 1st column to rings4cat
+names(df)[1] <- "rings4cat"
+
+PairPlot(df,                # sex + 2 PCoA score data
+         colnames(df)[2:3], # plot last 2 columns
+         title="PCoA Plot",   # add a title
+         group_var = "rings4cat") # color points by rings4cat
+```
+
+Similar to the PCA above, we see the younger abalones in quartile 1 plotting to the left or bottom and the older abalones in quartile 4 plotting to the top or right side of the plots.
+
+So it does look like either PCA or MDS yield components/coordinates that are somewhat associated with sex and age.
+
+-----
+
+## Supervised Machine Learning Options
+
+### Classification Trees - for 3 Sexes (as categories)
+
+Let's try using `rpart()`.
+
+```{r}
+library(rpart)
+fitall <- rpart(sex ~ ., data = datsex)
+
+# Now let's look at fitall
+printcp(fitall) # Display the results
+
+plotcp(fitall) # Visualize cross-validation results
+
+summary(fitall) # Detailed summary of fit
+
+plot(fitall, uniform = TRUE, 
+     compress = FALSE, 
+     main = "Classification Tree for Abalone Sexes by Size Dimensions")
+
+text(fitall, use.n = TRUE, 
+     all = TRUE, cex = 1)
+
+```
+
+This classification is very bad and not useful.
+
+Let's try `party()` and fit a conditional inference tree.
+
+```{r}
+# note sex has to be a factor for this to work
+library(party)
+fitallp <- ctree(as.factor(sex) ~ ., 
+                 data = datsex)
+
+plot(fitallp, 
+     main = "Conditional Inference Tree for Abalone Sexes by Size Dimensions")
+```
+
+This is a much more interesting classification tree. It looks like the first splits are based on diameter and then height and finally some length measures to fine tune putting the abalones into the right sex categories. This gives us a little insight into the relative importance of these measures relative to how they relate to sex categorization.
+
+It is hard to tell here due to the plotting limits, but the "F" females are shown by the bar plots on the left, the "I" infants are in the middle and the "M" males are plotting on the right bars.
+
+On the far left hand side where the abalones are the smallest are the larger number of infants placed into nodes on the left side of the tree, the females and males show up more in the middle and far right side nodes of the classification tree.
+
+
+### Classification Trees - for Number of Rings (as a continuous variable not the 4 quartiles)
+
+Let's try using `rpart()`.
+
+```{r}
+#library(rpart)
+fitall <- rpart(rings ~ ., data = datrings)
+
+# Now let's look at fitall
+printcp(fitall) # Display the results
+
+plotcp(fitall) # Visualize cross-validation results
+
+summary(fitall) # Detailed summary of fit
+
+plot(fitall, uniform = TRUE, 
+     compress = FALSE, 
+     main = "Regression Tree for Abalone Age-Number of Rings by Size Dimensions")
+
+text(fitall, use.n = TRUE, 
+     all = TRUE, cex = 1)
+
+```
+
+This is a little more interesting than what we got for the 3 sexes above. We can see that on the left side the average number of rings in the 1st node is about 6.1, the middle nodes show an average number of rings of 8.5 and 10.4 and the last node on the right is an average number of rings of 14.4 - so the age of the abalones is going up from left to right across this regression tree.
+
+Let's try `party()`.
+
+```{r}
+library(party)
+
+# keep only the numeric data
+# drop rings4cat
+datrings.num <- datrings %>%
+  select(rings, length, diameter, height)
+
+fitallp <- ctree(rings ~ ., 
+                 data = datrings.num)
+
+plot(fitallp, 
+     main = "Conditional Inference Tree for Abalone Number of Rings by Size Dimensions")
+```
+
+As you can see the little dotplots at each node indicating the number of rings of the abalones shows that as you go from left to right the number of rings (ages) of the abalones is getting higher (older).
+
+Again we see height as key in an early split followed by diameter. length comes in much later down in the tree for some fine tuning. So, again it looks like height and diameter are important.
+
+### Random Forest Classification - for 3 Sexes (as categories)
+
+```{r}
+library(randomForestSRC)
+library(ggRandomForests)
+set.seed(5491)
+
+# make sex a factor
+datsex$sex <- as.factor(datsex$sex)
+
+# and make datsex a plain data.frame
+# tbl_df class type won't work for rfsrc
+datsex <- data.frame(datsex)
+
+# Random forest for the abalones 
+# dimensions and sex dataset
+sexrf <- rfsrc(sex ~., 
+               data = datsex, 
+               ntree = 1000, tree.err = TRUE, 
+               block.size = 1)
+
+# Let's see what we've got
+sexrf
+```
+
+Overall this has a high error rate > 50% but the errors mostly seem to be from females and males cross classifying - the infants have the lower error rate of about 35%.
+
+Let's see how many trees we needed to achieve error convergence.
+
+```{r}
+# Plotting OOB errors agains number of trees
+gg_ek <- gg_error(sexrf)
+plot(gg_ek)
+
+# SKIP for categorical data
+# Plot the predicted sex categories
+# plot(gg_rfsrc(sexrf), alpha = 0.5)
+```
+
+Plot the variable importance. The code below shows the variable importance for the overall dataset as well how the variables are ranked by sex category which is interesting to see.
+
+```{r}
+# Plot the VIMP rankings of independent variables
+# this is interesting to look at by sex
+plot(vimp.rfsrc(sexrf))
+```
+
+As you can see diameter and height are both very important. What is interesting are the differences between the females and males. It looks like height is more important for the females but length may be more important for the males.
+
+Here is another way to visualize the variable importance overall.
+
+```{r}
+# Select the variables
+varsel <- var.select(sexrf)
+
+# Save the gg_minimal_depth object for later use
+gg_md <- gg_minimal_depth(varsel)
+
+# Plot the object
+plot(gg_md)
+
+# Plot minimal depth v VIMP
+gg_mdVIMP <- gg_minimal_vimp(gg_md)
+plot(gg_mdVIMP)
+
+# SKIP for categorical data
+#Create the variable dependence object from the random forest
+#gg_v <- gg_variable(sexrf)
+
+# Use the top ranked minimal depth variables only, plotted in minimal depth rank order
+#xvar <- gg_md$topvars
+
+# Plot the variable list in a single panel plot
+#plot(gg_v, xvar = xvar, panel = TRUE, alpha = 0.4) +
+#  labs(y="Predicted Sex Categories", x="")
+```
+
+### Random Forest Classification - for Number of Rings (as a continuous variable not the 4 quartiles)
+
+```{r}
+library(randomForestSRC)
+library(ggRandomForests)
+set.seed(131)
+
+# keep only the numeric data
+# drop rings4cat
+datrings.num <- datrings %>%
+  select(rings, length, diameter, height)
+
+# convert data into plain data.frame type class
+# tbl_df class won't work with rfsrc
+datrings.num <- data.frame(datrings.num)
+
+# Random Forest for the ozone dataset
+fitallrf <- rfsrc(rings ~ ., 
+                  data = datrings.num, 
+                  ntree = 100, tree.err=TRUE, 
+                  block.size = 1)
+
+# view the results
+fitallrf
+```
+
+For the number of rings, this random forest did really well - the error rate is only 6.52.
+
+```{r}
+# Plot the OOB errors against the growth of the forest
+gg_e <- gg_error(fitallrf)
+plot(gg_e)
+```
+
+The error rate appears to level off pretty well by about 50-75 trees so running 100 trees did pretty good here.
+
+Here is a boxplot of the predicted number of rings.
+
+```{r}
+# Plot the predicted number of rings
+plot(gg_rfsrc(fitallrf), alpha = 0.5)
+```
+
+Plot the variable importance.
+
+```{r}
+# Plot the VIMP rankings of independent variables
+plot(vimp.rfsrc(fitallrf))
+```
+
+Again we see diameter as important followed by height and then length as least important.
+
+Here is another way to look at this by the minimal depth.
+
+```{r}
+# Select the variables
+varsel <- var.select(fitallrf)
+
+# Save the gg_minimal_depth object for later use
+gg_md <- gg_minimal_depth(varsel)
+
+# Plot the object
+plot(gg_md)
+```
+
+Here you see that height has the highest minimal depth and not length.
+
+As we discussed in class, minimal depth is a surrogate measure of the predictive ability of the variable. The smaller the minimal depth, the more impact the variable has in sorting observations, and thus on forest prediction.
+
+Let's look at minimal depth by variable importance.
+
+```{r}
+# Plot minimal depth v VIMP
+gg_mdVIMP <- gg_minimal_vimp(gg_md)
+plot(gg_mdVIMP)
+```
+
+Interesting that the rank order of length and height seems to differ depending on if you are looking at variable importance or minimal depth...
+
+```{r}
+#Create the variable dependence object from the random forest
+gg_v <- gg_variable(fitallrf)
+
+# Use the top ranked minimal depth variables only, plotted in minimal depth rank order
+xvar <- gg_md$topvars
+
+# Plot the variable list in a single panel plot
+plot(gg_v, xvar = xvar, panel = TRUE, alpha = 0.4) +
+  labs(y="Predicted Number of Rings", x="")
+```
+
